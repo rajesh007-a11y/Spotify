@@ -61,6 +61,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.example.ui.theme.DarkSurfaceElevated
@@ -453,6 +454,9 @@ private fun PlayingEqualizerBars() {
         }
     }
 }
+
+@Composable
+fun BrowseCategoryTile(
     category: BrowseCategory,
     onClick: () -> Unit
 ) {
