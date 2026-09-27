@@ -30,7 +30,7 @@ android {
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
     }
-    create("debug") {
+    getByName("debug") {
       storeFile = file("debug.keystore")
       storePassword = "android"
       keyAlias = "androiddebugkey"
