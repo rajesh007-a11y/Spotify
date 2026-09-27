@@ -88,6 +88,7 @@ class SongSearchRepository(
             response.body()?.data?.results.orEmpty()
                 .mapNotNull { it.toDomainSong() }
                 .applyAggressiveQualityFilter(query)
+                .distinctBy { identityKey(it) }
         } catch (_: Exception) {
             emptyList()
         }
@@ -116,7 +117,7 @@ class SongSearchRepository(
             val page2 = page2Deferred.await()
 
             val rawResults = (page1.body()?.data?.results.orEmpty() + page2.body()?.data?.results.orEmpty())
-            val allSongs = rawResults.mapNotNull { it.toDomainSong() }.distinctBy { it.id }
+            val allSongs = rawResults.mapNotNull { it.toDomainSong() }.distinctBy { it.id }.distinctBy { identityKey(it) }
 
             val queryNormalized = query.trim().lowercase()
             val artistMatches = allSongs.filter { song ->
@@ -140,7 +141,7 @@ class SongSearchRepository(
                 return@withContext ArtistAwareSearchResult(
                     isArtistMode = true,
                     artistName = artistDisplayName,
-                    songs = artistMatches.distinctBy { it.id }
+                    songs = artistMatches.distinctBy { it.id }.distinctBy { identityKey(it) }
                 )
             }
 
@@ -210,6 +211,11 @@ class SongSearchRepository(
 
     private fun normalizedTitleKey(song: Song): String {
         return song.title.replace(Regex("\\(.*?\\)|\\[.*?\\]"), "").trim().lowercase()
+    }
+
+    /** Combined title+artist key to dedup the same song indexed under different compilation albums. */
+    private fun identityKey(song: Song): String {
+        return "${normalizedTitleKey(song)}_${song.artist.trim().lowercase()}"
     }
 
     suspend fun getSameArtistTopSongs(
