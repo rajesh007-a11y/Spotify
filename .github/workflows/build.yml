@@ -35,7 +35,7 @@ jobs:
           gradle-version: 9.3.1
 
       - name: Build debug APK
-        run: gradle assembleDebug --stacktrace
+        run: gradle assembleDebug -PversionCode=${{ github.run_number }} --stacktrace
         env:
           # .env is not committed; the secrets plugin falls back to
           # .env.example's placeholder values, which is enough to compile.

@@ -356,8 +356,7 @@ class SongSearchRepository(
             val durationSeconds = song.durationMs / 1000
             if (durationSeconds < 60 || durationSeconds > 600) return@filter false
 
-            // 3. OFFICIAL LABEL/ALBUM CHECK
-            if (album.isBlank()) return@filter false
+            // 3. SPAM ALBUM CHECK
             val isSpamAlbum = spamAlbums.any { album.contains(it) }
             if (isSpamAlbum) return@filter false
 

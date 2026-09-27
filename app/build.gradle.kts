@@ -16,8 +16,8 @@ android {
     applicationId = "com.aistudio.soundify.kzxqpv"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
+    versionName = "1.0.${project.findProperty("versionCode")?.toString() ?: "0"}"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

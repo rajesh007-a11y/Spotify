@@ -41,9 +41,19 @@ interface JioSaavnApiService {
             }
 
             val clientBuilder = OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(20, TimeUnit.SECONDS)
+                .connectTimeout(35, TimeUnit.SECONDS)
+                .readTimeout(45, TimeUnit.SECONDS)
                 .addInterceptor(logging)
+                // Retry once on timeout/network failure (Render.com free-tier cold starts)
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    try {
+                        chain.proceed(request)
+                    } catch (e: java.io.IOException) {
+                        // Single automatic retry
+                        chain.proceed(request)
+                    }
+                }
 
             // Inject API key header if provided in .env
             if (apiKey.isNotBlank() && apiKey != "YOUR_JIOSAAVN_API_KEY") {

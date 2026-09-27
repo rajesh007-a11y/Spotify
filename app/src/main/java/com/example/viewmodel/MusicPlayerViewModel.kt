@@ -593,37 +593,20 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
                     }.take(3)
                 }
                 
-                // Retry with pruned blacklist if completely empty
+                // Retry with BROADENED query instead of pruning the blacklist.
+                // Pruning playedSongIds/playedSongTitles would silently re-allow
+                // the seed song to reappear — so we never shrink those sets.
+                // Instead we broaden the search to a different genre/language.
                 if (newSongsToAdd.isEmpty()) {
-                    val retainCount = 40
-                    if (playedSongIds.size > retainCount) {
-                        val idsToKeep = playedSongIds.toList().takeLast(retainCount)
-                        playedSongIds.clear()
-                        playedSongIds.addAll(idsToKeep)
-                    }
-                    if (playedSongTitles.size > retainCount) {
-                        val titlesToKeep = playedSongTitles.toList().takeLast(retainCount)
-                        playedSongTitles.clear()
-                        playedSongTitles.addAll(titlesToKeep)
-                    }
-
-                    val snapshotTitlesRetry = playedSongTitles.toSet()
-                    val recommendationsRetry = songSearchRepository.getYouTubeRecommendations(current.title, current.artist, snapshotTitlesRetry)
-                    newSongsToAdd = recommendationsRetry.filter { song ->
-                        !playedSongIds.contains(song.id) && !playedSongTitles.contains(cleanTitle(song.title))
-                    }
-                    
-                    if (newSongsToAdd.isEmpty()) {
-                        val similarSongsRetry = songSearchRepository.getSimilarDomainSongs(current.id)
-                        newSongsToAdd = similarSongsRetry.filter { song ->
-                            !playedSongIds.contains(song.id) && !playedSongTitles.contains(cleanTitle(song.title))
-                        }.take(3)
-                    }
-                    
-                    if (newSongsToAdd.isEmpty()) {
-                        val fallbackQueryRetry = "${current.artist} best songs"
-                        val resultsRetry = songSearchRepository.searchDomainSongs(fallbackQueryRetry)
-                        newSongsToAdd = resultsRetry.filter { song ->
+                    val broadenedQueries = listOfNotNull(
+                        current.language.takeIf { it.isNotBlank() }?.let { "trending $it songs" },
+                        current.genre.takeIf { it.isNotBlank() && it != current.language }?.let { "top $it songs" },
+                        "trending popular songs"
+                    )
+                    for (broadQuery in broadenedQueries) {
+                        if (newSongsToAdd.isNotEmpty()) break
+                        val broadResults = songSearchRepository.searchDomainSongs(broadQuery)
+                        newSongsToAdd = broadResults.filter { song ->
                             !playedSongIds.contains(song.id) && !playedSongTitles.contains(cleanTitle(song.title))
                         }.take(3)
                     }
@@ -711,37 +694,20 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
                         }.take(3)
                     }
                     
-                    // Retry with pruned blacklist if completely empty
+                    // Retry with BROADENED query instead of pruning the blacklist.
+                    // Pruning playedSongIds/playedSongTitles would silently re-allow
+                    // the seed song to reappear — so we never shrink those sets.
+                    // Instead we broaden the search to a different genre/language.
                     if (newSongsToAdd.isEmpty()) {
-                        val retainCount = 40
-                        if (playedSongIds.size > retainCount) {
-                            val idsToKeep = playedSongIds.toList().takeLast(retainCount)
-                            playedSongIds.clear()
-                            playedSongIds.addAll(idsToKeep)
-                        }
-                        if (playedSongTitles.size > retainCount) {
-                            val titlesToKeep = playedSongTitles.toList().takeLast(retainCount)
-                            playedSongTitles.clear()
-                            playedSongTitles.addAll(titlesToKeep)
-                        }
-
-                        val snapshotTitlesRetry = playedSongTitles.toSet()
-                        val recommendationsRetry = songSearchRepository.getYouTubeRecommendations(lastSong.title, lastSong.artist, snapshotTitlesRetry)
-                        newSongsToAdd = recommendationsRetry.filter { song ->
-                            !playedSongIds.contains(song.id) && !playedSongTitles.contains(cleanTitle(song.title))
-                        }
-                        
-                        if (newSongsToAdd.isEmpty()) {
-                            val similarSongsRetry = songSearchRepository.getSimilarDomainSongs(lastSongId)
-                            newSongsToAdd = similarSongsRetry.filter { song ->
-                                !playedSongIds.contains(song.id) && !playedSongTitles.contains(cleanTitle(song.title))
-                            }.take(3)
-                        }
-
-                        if (newSongsToAdd.isEmpty()) {
-                            val fallbackQueryRetry = "${lastSong.artist} top songs"
-                            val resultsRetry = songSearchRepository.searchDomainSongs(fallbackQueryRetry)
-                            newSongsToAdd = resultsRetry.filter { song ->
+                        val broadenedQueries = listOfNotNull(
+                            lastSong.language.takeIf { it.isNotBlank() }?.let { "trending $it songs" },
+                            lastSong.genre.takeIf { it.isNotBlank() && it != lastSong.language }?.let { "top $it songs" },
+                            "trending popular songs"
+                        )
+                        for (broadQuery in broadenedQueries) {
+                            if (newSongsToAdd.isNotEmpty()) break
+                            val broadResults = songSearchRepository.searchDomainSongs(broadQuery)
+                            newSongsToAdd = broadResults.filter { song ->
                                 !playedSongIds.contains(song.id) && !playedSongTitles.contains(cleanTitle(song.title))
                             }.take(3)
                         }
