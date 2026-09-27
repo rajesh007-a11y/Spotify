@@ -140,7 +140,60 @@ class SongSearchRepository(
                 )
             }
 
-            ArtistAwareSearchResult(false, null, allSongs.applyAggressiveQualityFilter())
+            val finalSaavnSongs = allSongs.applyAggressiveQualityFilter()
+            
+            val finalCombinedSongs = if (finalSaavnSongs.size < 5) {
+                try {
+                    val pipedResponse = pipedApiService.searchYouTube(query)
+                    val newSongs = mutableListOf<Song>()
+                    if (pipedResponse.isSuccessful) {
+                        val items = pipedResponse.body()?.items?.filter { it.type == "stream" }.orEmpty()
+                        for (item in items) {
+                            if (newSongs.size + finalSaavnSongs.size >= 10) break
+                            val videoId = item.videoId
+                            if (videoId.isNotBlank()) {
+                                val streamRes = pipedApiService.getStreams(videoId)
+                                if (streamRes.isSuccessful) {
+                                    val streamUrl = streamRes.body()?.audioStreams?.firstOrNull()?.url
+                                    if (streamUrl != null) {
+                                        val ytTitleNorm = item.title.lowercase()
+                                        val ytArtistNorm = (item.uploaderName ?: "").lowercase()
+                                        val alreadyExists = finalSaavnSongs.any { s -> 
+                                            s.title.lowercase() == ytTitleNorm && s.artist.lowercase() == ytArtistNorm
+                                        }
+                                        if (!alreadyExists) {
+                                            newSongs.add(
+                                                Song(
+                                                    id = "yt_$videoId",
+                                                    title = item.title,
+                                                    artist = item.uploaderName ?: "Unknown",
+                                                    album = "YouTube",
+                                                    durationMs = (item.duration ?: 210) * 1000L,
+                                                    albumArtUrl = item.thumbnail ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80",
+                                                    audioUrl = streamUrl,
+                                                    genre = "YouTube",
+                                                    energy = 0.75f,
+                                                    valence = 0.70f,
+                                                    bpm = 110,
+                                                    lyrics = "[00:00] Streaming via YouTube Fallback",
+                                                    language = "English"
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    finalSaavnSongs + newSongs
+                } catch (e: Exception) {
+                    finalSaavnSongs
+                }
+            } else {
+                finalSaavnSongs
+            }
+
+            ArtistAwareSearchResult(false, null, finalCombinedSongs)
         } catch (_: Exception) {
             ArtistAwareSearchResult(false, null, emptyList())
         }

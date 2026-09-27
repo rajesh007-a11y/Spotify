@@ -18,6 +18,11 @@ interface PipedApiService {
         @Query("filter") filter: String = "music_songs"
     ): Response<PipedSearchResponse>
 
+    @GET("streams/{videoId}")
+    suspend fun getStreams(
+        @retrofit2.http.Path("videoId") videoId: String
+    ): Response<com.example.data.remote.model.PipedStreamsResponse>
+
     companion object {
         fun create(): PipedApiService {
             val client = OkHttpClient.Builder()
