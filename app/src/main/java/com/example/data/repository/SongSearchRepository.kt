@@ -4,6 +4,8 @@ import com.example.data.model.Song
 import com.example.data.remote.JioSaavnApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 data class ArtistAwareSearchResult(
     val isArtistMode: Boolean,
@@ -108,8 +110,10 @@ class SongSearchRepository(
         try {
             // Pull two pages with a higher limit so we have enough songs to detect
             // a genuine artist match instead of just the first few generic hits.
-            val page1 = apiService.searchSongs(query = query, page = 1, limit = 40)
-            val page2 = apiService.searchSongs(query = query, page = 2, limit = 40)
+            val page1Deferred = async { apiService.searchSongs(query = query, page = 1, limit = 40) }
+            val page2Deferred = async { apiService.searchSongs(query = query, page = 2, limit = 40) }
+            val page1 = page1Deferred.await()
+            val page2 = page2Deferred.await()
 
             val rawResults = (page1.body()?.data?.results.orEmpty() + page2.body()?.data?.results.orEmpty())
             val allSongs = rawResults.mapNotNull { it.toDomainSong() }.distinctBy { it.id }
@@ -145,47 +149,52 @@ class SongSearchRepository(
             val finalCombinedSongs = if (finalSaavnSongs.size < 5) {
                 try {
                     val pipedResponse = pipedApiService.searchYouTube(query)
-                    val newSongs = mutableListOf<Song>()
                     if (pipedResponse.isSuccessful) {
-                        val items = pipedResponse.body()?.items?.filter { it.type == "stream" }.orEmpty()
-                        for (item in items) {
-                            if (newSongs.size + finalSaavnSongs.size >= 10) break
-                            val videoId = item.videoId
-                            if (videoId.isNotBlank()) {
-                                val streamRes = pipedApiService.getStreams(videoId)
-                                if (streamRes.isSuccessful) {
-                                    val streamUrl = streamRes.body()?.audioStreams?.firstOrNull()?.url
-                                    if (streamUrl != null) {
-                                        val ytTitleNorm = item.title.lowercase()
-                                        val ytArtistNorm = (item.uploaderName ?: "").lowercase()
-                                        val alreadyExists = finalSaavnSongs.any { s -> 
-                                            s.title.lowercase() == ytTitleNorm && s.artist.lowercase() == ytArtistNorm
-                                        }
-                                        if (!alreadyExists) {
-                                            newSongs.add(
-                                                Song(
-                                                    id = "yt_$videoId",
-                                                    title = item.title,
-                                                    artist = item.uploaderName ?: "Unknown",
-                                                    album = "YouTube",
-                                                    durationMs = (item.duration ?: 210) * 1000L,
-                                                    albumArtUrl = item.thumbnail ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80",
-                                                    audioUrl = streamUrl,
-                                                    genre = "YouTube",
-                                                    energy = 0.75f,
-                                                    valence = 0.70f,
-                                                    bpm = 110,
-                                                    lyrics = "[00:00] Streaming via YouTube Fallback",
-                                                    language = "English"
-                                                )
-                                            )
-                                        }
-                                    }
+                        val items = pipedResponse.body()?.items?.filter { it.type == "stream" }.orEmpty().take(10)
+                        
+                        val fetchedSongs = items.map { item ->
+                            async {
+                                val videoId = item.videoId
+                                if (videoId.isBlank()) return@async null
+                                try {
+                                    val streamRes = pipedApiService.getStreams(videoId)
+                                    if (!streamRes.isSuccessful) return@async null
+                                    
+                                    val streamUrl = streamRes.body()?.audioStreams?.firstOrNull()?.url ?: return@async null
+                                    
+                                    Song(
+                                        id = "yt_$videoId",
+                                        title = item.title,
+                                        artist = item.uploaderName ?: "Unknown",
+                                        album = "YouTube",
+                                        durationMs = (item.duration ?: 210) * 1000L,
+                                        albumArtUrl = item.thumbnail ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80",
+                                        audioUrl = streamUrl,
+                                        genre = "YouTube",
+                                        energy = 0.75f,
+                                        valence = 0.70f,
+                                        bpm = 110,
+                                        lyrics = "[00:00] Streaming via YouTube Fallback",
+                                        language = "English"
+                                    )
+                                } catch (e: Exception) {
+                                    null
                                 }
                             }
-                        }
+                        }.awaitAll().filterNotNull()
+
+                        val newSongs = fetchedSongs.filter { ytSong ->
+                            val ytTitleNorm = ytSong.title.lowercase()
+                            val ytArtistNorm = ytSong.artist.lowercase()
+                            !finalSaavnSongs.any { s -> 
+                                s.title.lowercase() == ytTitleNorm && s.artist.lowercase() == ytArtistNorm
+                            }
+                        }.take((10 - finalSaavnSongs.size).coerceAtLeast(0))
+
+                        finalSaavnSongs + newSongs
+                    } else {
+                        finalSaavnSongs
                     }
-                    finalSaavnSongs + newSongs
                 } catch (e: Exception) {
                     finalSaavnSongs
                 }
