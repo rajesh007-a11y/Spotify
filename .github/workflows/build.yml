@@ -21,11 +21,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-
-      - name: Install required SDK platform & build-tools
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       # This repo doesn't ship gradlew/gradle-wrapper.jar, so we install the
       # exact Gradle version declared in gradle/wrapper/gradle-wrapper.properties
