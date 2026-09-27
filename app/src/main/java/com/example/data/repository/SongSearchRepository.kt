@@ -87,7 +87,7 @@ class SongSearchRepository(
 
             response.body()?.data?.results.orEmpty()
                 .mapNotNull { it.toDomainSong() }
-                .applyAggressiveQualityFilter()
+                .applyAggressiveQualityFilter(query)
         } catch (_: Exception) {
             emptyList()
         }
@@ -144,13 +144,13 @@ class SongSearchRepository(
                 )
             }
 
-            val finalSaavnSongs = allSongs.applyAggressiveQualityFilter()
+            val finalSaavnSongs = allSongs.applyAggressiveQualityFilter(query)
             
-            val finalCombinedSongs = if (finalSaavnSongs.size < 5) {
+            val finalCombinedSongs = if (finalSaavnSongs.size < 10) {
                 try {
                     val pipedResponse = pipedApiService.searchYouTube(query)
                     if (pipedResponse.isSuccessful) {
-                        val items = pipedResponse.body()?.items?.filter { it.type == "stream" }.orEmpty().take(10)
+                        val items = pipedResponse.body()?.items?.filter { it.type == "stream" }.orEmpty().take(15)
                         
                         val fetchedSongs = items.map { item ->
                             async {
@@ -189,7 +189,7 @@ class SongSearchRepository(
                             !finalSaavnSongs.any { s -> 
                                 s.title.lowercase() == ytTitleNorm && s.artist.lowercase() == ytArtistNorm
                             }
-                        }.take((10 - finalSaavnSongs.size).coerceAtLeast(0))
+                        }
 
                         finalSaavnSongs + newSongs
                     } else {
@@ -280,11 +280,18 @@ class SongSearchRepository(
      * AGGRESSIVE QUALITY FILTER
      * Drops fake tracks, generic EDM loops, and remixes based on keywords, duration, and album names.
      */
-    private fun List<Song>.applyAggressiveQualityFilter(): List<Song> {
-        val spamKeywords = listOf(
+    private fun List<Song>.applyAggressiveQualityFilter(query: String = ""): List<Song> {
+        val queryWords = query.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val allSpamKeywords = listOf(
             "remix", "dj", "instrumental", "cover", "lofi", "slowed", "reverb", "8d", 
             "mashup", "bgm", "karaoke", "version", "mix", "soundify", "trance", "techno", "bass boosted"
         )
+        
+        // If the user explicitly searched for a spam keyword, don't filter it out
+        val spamKeywords = allSpamKeywords.filter { spam ->
+            queryWords.none { q -> q.contains(spam) || spam.contains(q) }
+        }
+        
         val spamAlbums = listOf("hot hits", "happy vibes")
 
         return this.filter { song ->
@@ -298,9 +305,9 @@ class SongSearchRepository(
             }
             if (hasSpamKeyword) return@filter false
 
-            // 2. DURATION FILTER (Between 120s and 330s)
+            // 2. DURATION FILTER (Between 60s and 600s)
             val durationSeconds = song.durationMs / 1000
-            if (durationSeconds < 120 || durationSeconds > 330) return@filter false
+            if (durationSeconds < 60 || durationSeconds > 600) return@filter false
 
             // 3. OFFICIAL LABEL/ALBUM CHECK
             if (album.isBlank()) return@filter false
