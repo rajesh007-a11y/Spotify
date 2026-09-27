@@ -225,6 +225,11 @@ class SoundifyAudioPlayer(private val context: Context) {
         }
     }
 
+    fun repeatCurrentSong() {
+        player.seekTo(0L)
+        player.play()
+    }
+
     fun seekTo(positionMs: Long) {
         player.seekTo(positionMs)
         _currentPositionMs.value = positionMs

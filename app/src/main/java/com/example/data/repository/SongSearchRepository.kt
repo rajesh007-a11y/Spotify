@@ -208,6 +208,53 @@ class SongSearchRepository(
         }
     }
 
+    private fun normalizedTitleKey(song: Song): String {
+        return song.title.replace(Regex("\\(.*?\\)|\\[.*?\\]"), "").trim().lowercase()
+    }
+
+    suspend fun getSameArtistTopSongs(
+        song: Song,
+        excludeIds: Set<String>,
+        excludeTitleKeys: Set<String>,
+        limit: Int = 10
+    ): List<Song> = withContext(Dispatchers.IO) {
+        try {
+            val singerNames = song.artist.split(",", "&", "/").map { it.trim() }.filter { it.isNotBlank() && !it.equals("Various Artists", ignoreCase = true) }
+            val composerNames = song.composers.split(",", "&", "/").map { it.trim() }.filter { it.isNotBlank() && !it.equals("Various Artists", ignoreCase = true) }
+            val namesToTry = (singerNames + composerNames).distinct()
+            
+            val results = mutableListOf<Song>()
+            
+            for (name in namesToTry) {
+                if (results.size >= limit) break
+                try {
+                    val response = apiService.searchSongs(query = name, limit = 20)
+                    if (response.isSuccessful) {
+                        val candidates = response.body()?.data?.results.orEmpty().mapNotNull { it.toDomainSong() }
+                        for (candidate in candidates) {
+                            if (results.size >= limit) break
+                            
+                            val titleKey = normalizedTitleKey(candidate)
+                            val isMatch = candidate.artist.contains(name, ignoreCase = true) || candidate.composers.contains(name, ignoreCase = true)
+                            
+                            if (isMatch && candidate.id != song.id && !excludeIds.contains(candidate.id) && !excludeTitleKeys.contains(titleKey)) {
+                                val alreadyAdded = results.any { it.id == candidate.id || normalizedTitleKey(it) == titleKey }
+                                if (!alreadyAdded) {
+                                    results.add(candidate)
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Ignore per-name network failure
+                }
+            }
+            results
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     /**
      * Fetches similar songs for a given JioSaavn song ID.
      */

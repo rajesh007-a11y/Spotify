@@ -225,7 +225,7 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
 
     init {
         audioPlayer.setOnCompletionListener {
-            // Completion logic is now handled by onTrackChangedListener and ExoPlayer natively progressing
+            handleSongCompleted()
         }
 
         // When a song can't be played (no network, invalid file), skip to next
@@ -500,6 +500,40 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun playSearchedSong(song: Song) {
+        playSong(song, queue = listOf(song))   // instant playback, no wait
+
+        val startGeneration = queueGeneration.get()
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            queueFetchMutex.withLock {
+                if (queueGeneration.get() != startGeneration) return@withLock
+                try {
+                    val sameArtistSongs = songSearchRepository.getSameArtistTopSongs(
+                        song = song,
+                        excludeIds = playedSongIds.toSet(),
+                        excludeTitleKeys = playedSongTitles.toSet(),
+                        limit = 10
+                    ).filter {
+                        !playedSongIds.contains(it.id) &&
+                        !playedSongTitles.contains(cleanTitle(it.title))
+                    }
+                    if (sameArtistSongs.isEmpty()) return@withLock
+                    if (queueGeneration.get() != startGeneration) return@withLock
+
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        if (queueGeneration.get() != startGeneration) return@withContext
+                        sameArtistSongs.forEach {
+                            playedSongIds.add(it.id)
+                            playedSongTitles.add(cleanTitle(it.title))
+                        }
+                        _currentQueue.value = _currentQueue.value + sameArtistSongs
+                        audioPlayer.appendToQueue(sameArtistSongs)
+                    }
+                } catch (_: Exception) { /* best-effort; endless flow still kicks in later */ }
+            }
+        }
+    }
+
     fun togglePlayPause() {
         if (_currentSong.value == null) {
             _currentQueue.value.firstOrNull()?.let { playSong(it) }
@@ -770,7 +804,7 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
         
         when (_repeatMode.value) {
             RepeatMode.ONE -> {
-                _currentSong.value?.let { audioPlayer.playSong(it) }
+                audioPlayer.repeatCurrentSong()
             }
             RepeatMode.ALL, RepeatMode.OFF -> {
                 // If it ended, force next which fetches

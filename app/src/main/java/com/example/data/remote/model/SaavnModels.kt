@@ -74,6 +74,15 @@ data class SaavnSongItem(
             ?.replace("&amp;", "&")
             ?.ifBlank { "Single" } ?: "Single"
 
+        val composerNames = artists?.all
+            ?.filter { it.role?.contains("music", ignoreCase = true) == true }
+            ?.mapNotNull { it.name }
+            ?.distinct()
+            ?.joinToString(", ")
+            ?.replace("&amp;", "&")
+            ?.replace("&#039;", "'")
+            ?: ""
+
         return Song(
             id = "saavn_$id",
             title = cleanTitle,
@@ -88,7 +97,8 @@ data class SaavnSongItem(
             valence = 0.70f,
             bpm = 110,
             lyrics = "[00:00] Streaming via JioSaavn 320kbps Lossless Audio",
-            language = language?.replaceFirstChar { it.uppercase() } ?: "Hindi"
+            language = language?.replaceFirstChar { it.uppercase() } ?: "Hindi",
+            composers = composerNames
         )
     }
 }
@@ -107,7 +117,15 @@ data class SaavnMediaPayload(
 
 @JsonClass(generateAdapter = true)
 data class SaavnArtistsObj(
-    @Json(name = "primary") val primary: List<SaavnArtistInfo> = emptyList()
+    @Json(name = "primary") val primary: List<SaavnArtistInfo> = emptyList(),
+    @Json(name = "all") val all: List<SaavnArtistWithRole> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class SaavnArtistWithRole(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "role") val role: String? = null
 )
 
 @JsonClass(generateAdapter = true)

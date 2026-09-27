@@ -14,6 +14,7 @@ data class Song(
     val bpm: Int,
     val lyrics: String,
     val language: String = "English",
+    val composers: String = "", // Comma-separated music director/composer names, when known
     val isFavorite: Boolean = false,
     val isDownloaded: Boolean = false,
     val localFilePath: String? = null,
