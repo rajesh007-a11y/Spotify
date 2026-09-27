@@ -258,6 +258,12 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
                     
                     _currentSong.value = track
                     songStartTimeMs = System.currentTimeMillis()
+
+                    // Persist last-played song for cold-start restore
+                    persistLastPlayedSongId(track.id)
+                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        repository.ensureSongCached(track)
+                    }
                 }
             }
         }
@@ -268,12 +274,41 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
 
         // Initialize taste profile
         refreshTasteProfile()
-        
-        // Fetch real trending/top songs for the Home Screen instead of dummy data
-        fetchTrendingHomeSongs()
+
+        // Restore last-played song from previous session, then fetch Home feed
+        restoreLastPlayedSong()
 
         // Restore saved recent searches
         loadSearchHistory()
+    }
+
+    private fun persistLastPlayedSongId(songId: String) {
+        val prefs = getApplication<Application>().getSharedPreferences("soundify_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("last_played_song_id", songId).apply()
+    }
+
+    private fun restoreLastPlayedSong() {
+        viewModelScope.launch {
+            try {
+                val prefs = getApplication<Application>().getSharedPreferences("soundify_prefs", Context.MODE_PRIVATE)
+                val lastSongId = prefs.getString("last_played_song_id", null)
+                if (lastSongId != null) {
+                    val song = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        repository.getSongById(lastSongId)
+                    }
+                    if (song != null && _currentQueue.value.isEmpty()) {
+                        _currentSong.value = song
+                        _currentQueue.value = listOf(song)
+                        audioPlayer.loadQueueWithoutPlaying(listOf(song), 0)
+                    }
+                }
+            } catch (_: Exception) {
+                // Ignore — will fall back to trending default
+            } finally {
+                // Always fetch Home feed for display (and as queue fallback)
+                fetchTrendingHomeSongs()
+            }
+        }
     }
 
     private fun fetchTrendingHomeSongs() {
@@ -282,19 +317,12 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
                 // Fetch top trending Hindi/Bollywood hits
                 val results1 = songSearchRepository.searchDomainSongs("Top Bollywood")
                 val results2 = songSearchRepository.searchDomainSongs("Trending English")
-                var combined = (results1 + results2).distinctBy { it.id }.shuffled()
-                
-                combined = combined.filter { song ->
-                    !playedSongIds.contains(song.id) && !playedSongTitles.contains(cleanTitle(song.title))
-                }
-                
-                combined.forEach {
-                    playedSongIds.add(it.id)
-                    playedSongTitles.add(cleanTitle(it.title))
-                }
+                val combined = (results1 + results2).distinctBy { it.id }.shuffled()
                 
                 if (combined.isNotEmpty()) {
                     _fetchedHomeSongs.value = combined
+                    // Only set current song/queue to trending default if nothing
+                    // was restored from the previous session (Issue 2 restore)
                     if (_currentQueue.value.isEmpty()) {
                         _currentQueue.value = combined
                         _currentSong.value = combined.first()
@@ -464,6 +492,12 @@ class MusicPlayerViewModel(application: Application) : AndroidViewModel(applicat
 
         _currentSong.value = song
         songStartTimeMs = System.currentTimeMillis()
+
+        // Persist last-played song for cold-start restore
+        persistLastPlayedSongId(song.id)
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            repository.ensureSongCached(song)
+        }
         
         val cTitle = cleanTitle(song.title)
         playedSongIds.add(song.id)

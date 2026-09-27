@@ -57,6 +57,15 @@ class MusicRepository(
         return songDao.getSongById(songId)?.toSong()
     }
 
+    /**
+     * Ensures a song exists in the local Room cache without affecting
+     * playCount or lastPlayedTimestamp. Safe to call repeatedly —
+     * insertSongIfNotExists uses OnConflictStrategy.IGNORE.
+     */
+    suspend fun ensureSongCached(song: Song) = withContext(Dispatchers.IO) {
+        songDao.insertSongIfNotExists(SongEntity.fromSong(song))
+    }
+
     suspend fun toggleFavorite(song: Song) = withContext(Dispatchers.IO) {
         songDao.insertSongIfNotExists(SongEntity.fromSong(song))
         val newFav = !song.isFavorite
