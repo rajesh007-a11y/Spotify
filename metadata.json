@@ -1,0 +1,6 @@
+{
+  "name": "Soundify",
+  "description": "Spotify-style ad-free music streaming & offline player with an intelligent personal AI DJ, Hi-Fi audio quality, and smart taste-curated playlists.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
