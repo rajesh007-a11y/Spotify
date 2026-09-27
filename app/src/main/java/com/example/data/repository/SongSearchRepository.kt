@@ -25,7 +25,7 @@ data class TrackResult(
 
 class SongSearchRepository(
     private val apiService: JioSaavnApiService = JioSaavnApiService.create(),
-    private val pipedApiService: com.example.data.remote.PipedApiService = com.example.data.remote.PipedApiService.create()
+    private val pipedApiService: com.example.data.remote.PipedApiServiceWithFallback = com.example.data.remote.PipedApiService.createWithFallback()
 ) {
 
     /**
@@ -85,10 +85,11 @@ class SongSearchRepository(
             val response = apiService.searchSongs(query = query)
             if (!response.isSuccessful) return@withContext emptyList()
 
-            response.body()?.data?.results.orEmpty()
+            val raw = response.body()?.data?.results.orEmpty()
                 .mapNotNull { it.toDomainSong() }
-                .applyAggressiveQualityFilter(query)
-                .distinctBy { identityKey(it) }
+            val filtered = raw.applyAggressiveQualityFilter(query).distinctBy { identityKey(it) }
+            // Fall back to unfiltered results if the filter wiped everything
+            filtered.ifEmpty { raw.distinctBy { identityKey(it) } }
         } catch (_: Exception) {
             emptyList()
         }
@@ -145,7 +146,9 @@ class SongSearchRepository(
                 )
             }
 
-            val finalSaavnSongs = allSongs.applyAggressiveQualityFilter(query)
+            val filteredSaavnSongs = allSongs.applyAggressiveQualityFilter(query)
+            // Fall back to unfiltered results if the filter wiped everything
+            val finalSaavnSongs = filteredSaavnSongs.ifEmpty { allSongs }
             
             val finalCombinedSongs = if (finalSaavnSongs.size < 10) {
                 try {
@@ -349,12 +352,13 @@ class SongSearchRepository(
 
         return this.filter { song ->
             val title = song.title.lowercase()
-            val artist = song.artist.lowercase()
             val album = song.album.lowercase()
 
-            // 1. RUTHLESS KEYWORD BLACKLIST
+            // 1. KEYWORD BLACKLIST — only applied to TITLE, not artist/album,
+            // because album/artist names legitimately contain words like "Mix",
+            // "Version", "DJ" (e.g. compilation albums, DJ artist names).
             val hasSpamKeyword = spamKeywords.any { keyword ->
-                title.contains(keyword) || artist.contains(keyword) || album.contains(keyword)
+                title.contains(keyword)
             }
             if (hasSpamKeyword) return@filter false
 
